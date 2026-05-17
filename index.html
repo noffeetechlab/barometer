@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>気圧チェッカー</title>
+    <!-- グラフを簡単に描くためのライブラリ (Chart.js) を読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f0f4f8;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+        }
+        h1 { font-size: 1.5rem; color: #333; text-align: center; }
+        .pressure-display {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #007aff;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .unit { font-size: 1.2rem; color: #666; }
+        canvas { margin-top: 20px; width: 100% !important; height: auto !important; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>現在の気圧と推移</h1>
+    <div class="pressure-display" id="current-pressure">-- <span class="unit">hPa</span></div>
+    
+    <!-- グラフを表示する場所 -->
+    <canvas id="pressureChart"></canvas>
+</div>
+
+<script>
+    // ※ 緯度・経度をここに設定します（例として徳島市周辺の数値を設定しています）
+    const LATITUDE = 34.07;
+    const LONGITUDE = 134.55;
+
+    // Open-Meteo APIのURL（現在・過去24時間・未来24時間の海面気圧を取得）
+    const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&hourly=pressure_msl&timezone=Asia%2FTokyo&past_days=1`;
+
+    async function fetchPressureData() {
+        try {
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+            
+            // データの整理
+            const times = data.hourly.time; // 時間の配列
+            const pressures = data.hourly.pressure_msl; // 気圧の配列
+
+            // 現在の時刻に一番近いデータを取得して画面に表示
+            const latestPressure = pressures[pressures.length - 24]; // 予測の手前（現時点付近）の値
+            document.getElementById('current-pressure').innerHTML = `${Math.round(latestPressure)} <span class="unit">hPa</span>`;
+
+            // 直近24時間のデータだけを切り取ってグラフにする
+            const displayTimes = times.slice(-36, -12).map(t => t.split('T')[1]); // 時間部分だけ抽出 (例 "12:00")
+            const displayPressures = pressures.slice(-36, -12);
+
+            // グラフの描画処理
+            createChart(displayTimes, displayPressures);
+
+        } catch (error) {
+            console.error("データの取得に失敗しました:", error);
+            document.getElementById('current-pressure').innerText = "エラー";
+        }
+    }
+
+    function createChart(labels, dataPoints) {
+        const ctx = document.getElementById('pressureChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '気圧推移 (hPa)',
+                    data: dataPoints,
+                    borderColor: '#007aff',
+                    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3 // 線を滑らかにする
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        // グラフの縦軸の範囲を気圧に合わせて自動でいい感じにする
+                        suggestedMin: Math.min(...dataPoints) - 2,
+                        suggestedMax: Math.max(...dataPoints) + 2
+                    }
+                }
+            }
+        });
+    }
+
+    // ページが読み込まれたら実行
+    fetchPressureData();
+</script>
+
+</body>
+</html>
