@@ -177,14 +177,13 @@
             padding-left: 4px;
             display: flex;
             align-items: center;
-            gap: 6px; /* 日付と本日バッジの隙間 */
+            gap: 6px;
         }
 
         .sunday {
             color: var(--danger) !important;
         }
 
-        /* 本日マーク（バッジ）のスタイル */
         .today-badge {
             background-color: var(--primary);
             color: white !important;
@@ -331,15 +330,36 @@
 
     async function fetchBarometerData(lat, lon) {
         const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl&current_weather=true&timezone=Asia%2FTokyo&past_days=3`;
+        // 緯度経度から実際の都市名を逆引きするための補助API
+        const geoUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ja`;
 
         try {
-            const response = await fetch(apiUrl);
-            const data = await response.json();
+            // 気圧データと地名データを同時に取得開始
+            const [weatherRes, geoRes] = await Promise.all([
+                fetch(apiUrl),
+                fetch(geoUrl).catch(() => null) // 地名取得が万が一失敗しても気圧は動くように非同期制御
+            ]);
+
+            const data = await weatherRes.json();
             
+            // --- 地名表示の最適化処理 ---
+            let placeName = "現在地付近";
+            if (geoRes) {
+                const geoData = await geoRes.json();
+                if (geoData && geoData.address) {
+                    const addr = geoData.address;
+                    // 都道府県名と市町村名を取り出して結合
+                    const prefecture = addr.province || addr.prefecture || "";
+                    const city = addr.city || addr.town || addr.island || addr.suburb || "";
+                    if (prefecture || city) {
+                        placeName = `${prefecture}${city}付近`;
+                    }
+                }
+            }
+            document.getElementById('location-name').innerText = placeName;
+
             const times = data.hourly.time;
             const pressures = data.hourly.pressure_msl;
-
-            document.getElementById('location-name').innerText = `現在地 (${data.timezone.split('/')[1]}付近)`;
 
             const now = new Date();
             let currentIdx = 0;
@@ -479,14 +499,14 @@
         tbody.innerHTML = ""; 
 
         const now = new Date();
-        const todayStr = `${now.getMonth() + 1}/${now.getDate()}`; // 今日の「月/日」
+        const todayStr = `${now.getMonth() + 1}/${now.getDate()}`;
 
         const dayGroups = {};
         times.forEach((timeStr, idx) => {
             const dateObj = new Date(timeStr);
             const m = dateObj.getMonth() + 1;
             const d = dateObj.getDate();
-            const dateMatchKey = `${m}/${d}`; // 判定用のシンプルなキー
+            const dateMatchKey = `${m}/${d}`;
             
             const dayOfWeek = weekDays[dateObj.getDay()];
             const isSunday = dateObj.getDay() === 0;
@@ -497,7 +517,7 @@
                 dayGroups[dateDisplayKey] = { 
                     pressures: [], 
                     isSun: isSunday,
-                    isToday: (dateMatchKey === todayStr) // 今日かどうか判定
+                    isToday: (dateMatchKey === todayStr)
                 }; 
             }
             dayGroups[dateDisplayKey].pressures.push(pressures[idx]);
@@ -514,8 +534,6 @@
 
             const diffClass = diff >= 3.0 ? "val-diff" : "val-diff stable";
             const sundayClass = group.isSun ? "day-column sunday" : "day-column";
-
-            // 今日マークのHTMLを組み立て
             const todayBadgeHtml = group.isToday ? `<span class="today-badge">本日</span>` : '';
 
             const tr = document.createElement('tr');
